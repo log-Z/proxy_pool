@@ -53,7 +53,7 @@ class ProxyPool:
 
 
 class ProxyLoader:
-    def proxylist(self) -> dict:
+    def proxylist(self) -> list:
         raise RuntimeError('Unsupported method.')
 
 
@@ -69,7 +69,7 @@ class FatezeroProxySpider(ProxySpider):
         super().__init__(sys_proxy)
         self.timeout = timeout
 
-    def proxylist(self) -> dict:
+    def proxylist(self) -> list:
         ls = []
         res = requests.get(FatezeroProxySpider._POOL_URL, proxies=self.sys_proxy)
         for proxy in res.text.split('\n'):
@@ -93,7 +93,7 @@ class SixSixIPProxySpider(ProxySpider):
         self.timeout = timeout
         self.num = num
     
-    def proxylist(self) -> dict:
+    def proxylist(self) -> list:
         ls = []
         url = SixSixIPProxySpider._POOL_URL.format(self.num)
         res = requests.get(url, proxies=self.sys_proxy)
