@@ -24,6 +24,5 @@ create table test_log (
   verification_ip boolean comment '是否验证了IP',
   response_head text comment '响应头',
   response_body text comment '响应体',
-  exception text comment '异常信息',
-  constraint fk_p_url foreign key (proxy_url) references proxy(proxy_url)
+  exception text comment '异常信息'
 );

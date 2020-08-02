@@ -2,13 +2,25 @@ from threading import RLock, Thread
 from database import MySQLOperation
 from concurrent.futures import ThreadPoolExecutor
 
+
+class HandlerContext:
+    def __init__(self, job_name, job_time=None, logger=None): 
+        self.job_name = job_name
+        self.job_time = job_time
+        self.logger = logger
+
+
 class Handler:
+    def __init__(self, context=None):
+        self._context = context
+
     def handle(self, data):
         raise NotImplementedError()
 
 
 class BufferHandler(Handler):
-    def __init__(self):
+    def __init__(self, context=None):
+        super().__init__(context)
         self._buffer = []
     
     def handle(self, data):
@@ -26,8 +38,8 @@ class OnceHandler(BufferHandler):
 
 
 class StreamHandler(BufferHandler):
-    def __init__(self, max_cache:int, concurrency:int):
-        super().__init__()
+    def __init__(self, max_cache:int, concurrency:int, context=None):
+        super().__init__(context)
         self._max_cache = max_cache
         self._lock = RLock()
         self._executor = ThreadPoolExecutor(concurrency)
@@ -78,12 +90,22 @@ class StreamDatabaseOperation(StreamHandler, DatabaseOperationMixin):
 
 class OnceInsertDatabase(OnceDatabaseOperation):
     def handle_all(self):
-        self._operator().batch_insert(self.clear())
+        try:
+            self._operator().batch_insert(self.clear())
+        except:
+            if self._context and self._context.logger:
+                self._context.logger.exception(f'OnceInsertDatabase: Failed be insert data.')
+            raise
 
 
 class StreamInsertDatabase(StreamDatabaseOperation):
     def batch_handle(self, data_list:list):
-        self._operator().batch_insert(data_list)
+        try:
+            self._operator().batch_insert(data_list)
+        except:
+            if self._context and self._context.logger:
+                self._context.logger.exception(f'StreamInsertDatabase: Failed be insert data.')
+            raise
 
 
 class MySQLOperationMixin(DatabaseOperationMixin):
@@ -100,20 +122,28 @@ class MySQLStreamInserter(StreamInsertDatabase, MySQLOperationMixin):
 
 
 class ProxyValidateHandler(Handler):
-    def __init__(self, proxy_handler=None, test_log_handler=None):
+    def __init__(self, proxy_handler=None, test_log_handler=None, context=None):
+        super().__init__(context)
         self.__proxy_handler = proxy_handler
         self.__test_log_handler = test_log_handler
 
     def handle(self, result:dict):
         proxy = result['proxy']
         test_logs = result['test_logs']
+        if self._context and self._context.logger:
+            self._context.logger.info(f'ProxyValidateHandler: Handling test result from proxy "{proxy.proxy_url}".')
 
-        if self._qualify(test_logs):
-            if self.__proxy_handler is not None:
-                self.__proxy_handler.handle(proxy)
-            if self.__test_log_handler is not None:
-                for tl in test_logs:
-                    self.__test_log_handler.handle(tl)
+        try:
+            if self._qualify(test_logs):
+                if self.__proxy_handler is not None:
+                    self.__proxy_handler.handle(proxy)
+                if self.__test_log_handler is not None:
+                    for tl in test_logs:
+                        self.__test_log_handler.handle(tl)
+        except:
+            if self._context and self._context.logger:
+                self._context.logger.exception(f'ProxyValidateHandler: Failed be handle test result from proxy "{proxy.proxy_url}".')
+            raise
 
     def close(self):
         self.__proxy_handler.close()

@@ -24,8 +24,11 @@ class MySQLOperation:
 
     @staticmethod
     def __execute(sql:str):
-        with pymysql.connect(**Config.database) as cursor:
+        connect = pymysql.connect(**Config.database)
+        with connect.cursor() as cursor:
             cursor.execute(sql)
+            connect.commit()
+        connect.close()
 
     @staticmethod
     def __table_name(entity:Model) -> str:

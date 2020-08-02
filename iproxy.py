@@ -6,9 +6,17 @@ from models import Proxy, TestLog
 from config import Config
 
 
+class ProxyPoolContext:
+    def __init__(self, job_name, job_time=None, logger=None): 
+        self.job_name = job_name
+        self.job_time = job_time
+        self.logger = logger
+
+
 class ProxyPool:
-    def __init__(self):
+    def __init__(self, context:ProxyPoolContext=None):
         self._proxylist:dict = []
+        self._context = context
     
     def load(self, loader, override=True):
         if override:
@@ -30,7 +38,10 @@ class ProxyPool:
         for proxy in excutor.map(run, self._proxylist):
             progress_count += 1
             progress = round(progress_count / proxy_count * 100, 2)
-            print(f"{progress}%", progress_count, str(proxy))
+            
+            print(f'Verified [ {progress}% | {progress_count}/{proxy_count} ] {proxy.proxy_url}')
+            if self._context and self._context.logger:
+                self._context.logger.info(f'ProxyPool: Verified [ {progress}% | {progress_count}/{proxy_count} ] {proxy.proxy_url}.')
 
         handler.close()
 
@@ -45,7 +56,18 @@ class ProxyPool:
         return len(self._proxylist)
 
 
+class ProxyLoaderContext:
+    def __init__(self, job_name, job_time=None, logger=None): 
+        self.job_name = job_name
+        self.job_time = job_time
+        self.logger = logger
+
+
 class ProxyLoader:
+    def __init__(self, context:ProxyLoaderContext=None):
+        self._proxylist:dict = []
+        self._context = context
+    
     def load(self) -> list:
         raise NotImplementedError()
 
@@ -55,7 +77,8 @@ class ProxyLoader:
 
 
 class ProxySpider(ProxyLoader):
-    def __init__(self, sys_proxy=None, timeout=60, num=1000):
+    def __init__(self, sys_proxy=None, timeout=60, num=1000, context=None):
+        super().__init__(context)
         self._sys_proxy = sys_proxy
         self._timeout = timeout
         self._num = num
@@ -66,24 +89,32 @@ class FatezeroProxySpider(ProxySpider):
 
     def load(self) -> list:
         ls = []
-        res = requests.get(FatezeroProxySpider._POOL_URL, proxies=self._sys_proxy, timeout=self._timeout)
-        for text in res.text.split('\n'):
-            try:
-                p = json.loads(text, encoding='utf-8')
-                proxy = Proxy()
-                proxy.ip = p['host']
-                proxy.port = p['port']
-                proxy.protocol = p['type']
-                proxy.proxy_url = self.proxy_url(proxy.ip, proxy.port, proxy.protocol)
-                proxy.collect_time = Datetime.now()
-                proxy.local = Config.local
-                ls.append(proxy)
-            except:
-                pass
-        if self._num is None:
-            return ls
-        else:
-            return ls[:self._num]
+
+        if self._context and self._context.logger:
+            self._context.logger.info('FatezeroProxySpider: loading proxy list.')
+        try:
+            res = requests.get(FatezeroProxySpider._POOL_URL, proxies=self._sys_proxy, timeout=self._timeout)
+            for text in res.text.split('\n'):
+                try:
+                    p = json.loads(text, encoding='utf-8')
+                    proxy = Proxy()
+                    proxy.ip = p['host']
+                    proxy.port = p['port']
+                    proxy.protocol = p['type']
+                    proxy.proxy_url = self.proxy_url(proxy.ip, proxy.port, proxy.protocol)
+                    proxy.collect_time = Datetime.now()
+                    proxy.local = Config.local
+                    ls.append(proxy)
+                except:
+                    pass
+            if self._num is None:
+                return ls
+            else:
+                return ls[:self._num]
+        except:
+            if self._context and self._context.logger:
+                self._context.logger.exception('FatezeroProxySpider: Failed be load proxy list.')
+            raise
 
 
 class SixSixIPProxySpider(ProxySpider):
@@ -94,37 +125,57 @@ class SixSixIPProxySpider(ProxySpider):
         if self._num is None:
             return ls
 
+        if self._context and self._context.logger:
+            self._context.logger.info('SixSixIPProxySpider: loading proxy list.')
+
         url = SixSixIPProxySpider._POOL_URL.format(self._num)
-        res = requests.get(url, proxies=self._sys_proxy, timeout=self._timeout)
         reg = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d+)(?=<br />)')
-        for match in reg.finditer(res.text):
-            try:
-                for protocol in ('http', 'https'):
-                    proxy = Proxy()
-                    proxy.ip = match.group(1)
-                    proxy.port = match.group(2)
-                    proxy.protocol = protocol
-                    proxy.proxy_url = self.proxy_url(proxy.ip, proxy.port, proxy.protocol)
-                    proxy.collect_time = Datetime.now()
-                    proxy.local = Config.local
-                    ls.append(proxy)
-            except:
-                pass
-        return ls
+        try:
+            res = requests.get(url, proxies=self._sys_proxy, timeout=self._timeout)
+            for match in reg.finditer(res.text):
+                try:
+                    for protocol in ('http', 'https'):
+                        proxy = Proxy()
+                        proxy.ip = match.group(1)
+                        proxy.port = match.group(2)
+                        proxy.protocol = protocol
+                        proxy.proxy_url = self.proxy_url(proxy.ip, proxy.port, proxy.protocol)
+                        proxy.collect_time = Datetime.now()
+                        proxy.local = Config.local
+                        ls.append(proxy)
+                except:
+                    pass
+            return ls
+        except:
+            if self._context and self._context.logger:
+                self._context.logger.exception('SixSixIPProxySpider: Failed be load proxy list.')
+            raise
+
+
+class ProxyValidatorContext:
+    def __init__(self, job_name, job_time=None, logger=None): 
+        self.job_name = job_name
+        self.job_time = job_time
+        self.logger = logger
 
 
 class ProxyValidator:
     __REQUEST_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36'}
 
-    def __init__(self, website_name, http_url, https_url, timeout):
+    def __init__(self, website_name, http_url, https_url, timeout, context=None):
         self._request_config = dict(timeout=timeout, headers=self.__REQUEST_HEADERS)
         self._website_name = website_name
         self._http_url = http_url
         self._https_url = https_url
-        self._job_time = Datetime.now()
+        self._job_time = Datetime.now() if not context or not context.job_time else context.job_time
         self._verification_ip = False
+        self._context = context
 
     def verify(self, proxy:Proxy) -> TestLog:
+        if self._context and self._context.logger:
+            validator_name = self.__class__.__name__
+            self._context.logger.info(f'{validator_name}: Verifying proxy "{proxy.proxy_url}".')
+
         tl = TestLog()
         tl.proxy_url = proxy.proxy_url
         tl.website_name = self._website_name
@@ -179,8 +230,8 @@ class IPValidator(ProxyValidator):
     PLAN_IP_CN = dict(website_name='ip.cn', http_url=None, https_url='https://ip.cn/')
     PLAN_WHATISMYIP_AKAMAI_COM = dict(website_name='whatismyip.akamai.com', http_url='http://whatismyip.akamai.com/', https_url='https://whatismyip.akamai.com/')
 
-    def __init__(self, website_name, http_url, https_url, timeout=5):
-        super().__init__(website_name, http_url, https_url, timeout)
+    def __init__(self, website_name, http_url, https_url, timeout=5, context=None):
+        super().__init__(website_name, http_url, https_url, timeout, context)
         self._verification_ip = True
 
     def _proxy_exception(self, proxy:Proxy, response:requests.Response):
@@ -191,8 +242,8 @@ class KeywordValidator(ProxyValidator):
     PLAN_BAIDU_SUG = dict(website_name='百度SUG', http_url=None, https_url='https://www.baidu.com/su', kw='window.baidu.sug')
     PLAN_ZHIHU_SIGNIN = dict(website_name='知乎登录', http_url=None, https_url='https://www.zhihu.com/signin', kw='有问题，上知乎')
 
-    def __init__(self, website_name, http_url, https_url, kw, timeout=5):
-        super().__init__(website_name, http_url, https_url, timeout)
+    def __init__(self, website_name, http_url, https_url, kw, timeout=5, context=None):
+        super().__init__(website_name, http_url, https_url, timeout, context)
         self._kw = kw
 
     def _proxy_exception(self, proxy:Proxy, response:requests.Response):

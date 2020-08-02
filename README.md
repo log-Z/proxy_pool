@@ -1,5 +1,9 @@
 # 轻量IP代理池 PROXY POOL
 
+> Pull 代码时请当心原有的 `config.py` 和 `jobs.py` 文件会被覆盖。
+
+> 此项目尚为 `预览版` ，不能保证高可用性，各个模块仍会有大改动的可能性。
+
 ## 功能
 1. 抓取网络上发布的免费IP代理。
 1. 验证代理有效性。
@@ -18,11 +22,17 @@ $ pip install -r requirements.txt
 
 ### 创建数据库
 建表语句存放在 [`SQL/create_tables.sql`](SQL/create_tables.sql) 文件中，请手动创建所有的表。
+> 为了避免插入顺序的限制，请不要设置任何外键约束！
 
 ### 修改全局配置
 在 `config.py` 模块的 `Config` 类中修改数据库信息和位置信息，这是它本身的样子：
 ```python
 class Config:
+
+    # 必须。指定当前主机的位置信息。
+    local = 'home'
+
+    # 必须。指定数据库连接信息。
     database = {
         'host': 'localhost',
         'user': 'root',
@@ -31,44 +41,62 @@ class Config:
         'charset': 'utf8mb4',
     }
 
-    local = 'home'
+    # 必须。指定日志信息。
+    log = {
+        # 可选。指定日志级别，有效值为 debug、info、warning、error、critical 之一。
+        'level': 'info',
+        # 可选。指定日志文件的绝对路径。
+        'path': 'D:/temp/proxy_pool/job.log',
+    }
 ```
 
 ### 添加作业
-在 `jobs.py` 模块的 `Job` 类中添加作业方法，方法名称必须为“ `job_` + `作业名称` ”。下面是附带的例子：
+在 `jobs.py` 模块的 `Job` 类中添加作业方法，方法名称必须为 `job_作业名称` ，参数列表必须包含 `self` 和 `context` 这两个形参。下面是附带的例子：
 ```python
-def job_001(self):
-    from iproxy import FatezeroProxySpider, IPValidator
-    from handler import ProxyValidateHandler, MySQLStreamInserter
+def job_001(self, context):
+    """这个作业的名称是 001
+    
+    启动方式：$ python jobs.py start 001
+    """
+
+    from iproxy import ProxyPoolContext, ProxyLoaderContext, ProxyValidatorContext, FatezeroProxySpider, IPValidator
+    from handler import HandlerContext, ProxyValidateHandler, MySQLStreamInserter
+
+    ## 0. 配置上下文，为各个组件提供全局环境
+    ctx = {
+        'job_name': context.job_name,
+        'job_time': context.job_time,
+        'logger': context.logger,
+    }
 
     ## 1. 创建代理池
-    pool = ProxyPool()
+    pool = ProxyPool(context=ProxyPoolContext(**ctx))
 
     ## 2. 加载代理
     # 创建代理加载器
-    loader = FatezeroProxySpider(num=50)
-    # 并执行加载
+    loader = FatezeroProxySpider(num=50, context=ProxyLoaderContext(**ctx))
+    # 执行加载
     pool.load(loader)
 
     ## 3. 验证代理
     # 创建验证器
-    v = IPValidator(**IPValidator.PLAN_IP138)
+    v = IPValidator(**IPValidator.PLAN_IP138, context=ProxyValidatorContext(**ctx))
     # 创建代理处理器
-    ph = MySQLStreamInserter(max_cache=50, concurrency=10)
+    ph = MySQLStreamInserter(max_cache=50, concurrency=10, context=HandlerContext(**ctx))
     # 创建测试日志处理器
-    tlh = MySQLStreamInserter(max_cache=50, concurrency=10)
+    tlh = MySQLStreamInserter(max_cache=50, concurrency=10, context=HandlerContext(**ctx))
     # 创建验证处理器，负责验证通过后的处理
-    h = ProxyValidateHandler(ph, tlh)
+    h = ProxyValidateHandler(proxy_handler=ph, test_log_handler=tlh, context=HandlerContext(**ctx))
     # 执行验证
     pool.verify(v, h, repeat=3)
 ```
 
 ### 启动作业
-假设启动名称是 `001` 的单个作业：
+假设，启动名称是 `001` 的单个作业：
 ```shell
 $ python jobs.py start 001
 ```
-假设启动名称分别是 `001` 、 `002` 和 `003` 的多个作业，先后顺序即启动顺序：
+假设，启动名称分别是 `001` 、 `002` 和 `003` 的多个作业，先后顺序等于启动顺序：
 ```shell
 $ python jobs.py start 001 002 003
 ```
@@ -99,17 +127,27 @@ $ python jobs.py start 001 002 003
 * `database.py` ：数据库相关操作工具包。
 * `models.py` ：持久层的实体模型。
 * `config.py` : 全局配置。
-* `jobs.py` ：管理作业，支持快速启动作业。
+* `jobs.py` ：作业管理，支持快速启动作业。
 > 原来的 `proxy_pool.py` 已经废弃，将会择机删除！
 
 ### iproxy.py
+代理池
 * `ProxyPool` ：代理池。
+
+代理加载器
 * `ProxyLoader` ：代理加载器。
 * `ProxySpider` ：代理爬虫，继承自 `ProxyLoader` 类。
 * `XxxProxySpider` ：针对某个网站的代理爬虫，继承自 `ProxyLoader` 类。
+
+代理验证器
 * `ProxyValidator` ：代理验证器。
 * `IPValidator` ：IP验证器，继承自 `ProxyValidator` 类。
 * `KeywordValidator` ：关键词验证器，继承自 `ProxyValidator` 类。
+
+上下文（Context）
+* `ProxyPoolContext` ：代理池上下文。
+* `ProxyLoaderContext` ：代理加载器上下文。
+* `ProxyValidatorContext` ：代理验证器上下文。
 
 ### handler.py
 处理器
@@ -129,6 +167,9 @@ $ python jobs.py start 001 002 003
 * `DatabaseOperationMixin` ：数据库操作混入。
 * `MySQLOperationMixin` ：MySQL数据库操作混入，继承自 `DatabaseOperationMixin` 类。
 
+上下文（Context）
+* `HandlerContext` ：处理器上下文。
+
 ### database.py
 * `MySQLOperation` ：MySQL数据库操作工具包。
 
@@ -146,4 +187,5 @@ $ python jobs.py start 001 002 003
 * `Config` ：全局配置。
 
 ### jobs.py
-* `Job` ：管理作业。
+* `Job` ：作业管理。
+* `JobContext` ：作业上下文。
