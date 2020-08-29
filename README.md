@@ -21,11 +21,12 @@ $ pip install -r requirements.txt
 ```
 
 ### 创建数据库
-建表语句存放在 [`SQL/create_tables.sql`](SQL/create_tables.sql) 文件中，请手动创建所有的表。
+1. 建库语句位于 [`SQL/create_database.sql`](SQL/create_database.sql) 文件中，请手动创建数据库。
+1. 建表语句位于 [`SQL/create_tables.sql`](SQL/create_tables.sql) 文件中，请手动创建所有的表。
 > 为了避免插入顺序的限制，请不要设置任何外键约束！
 
 ### 修改全局配置
-在 `config.py` 模块的 `Config` 类中修改数据库信息和位置信息，这是它本身的样子：
+在 `config.py` 模块的 `Config` 类中修改配置信息，这是它本身的样子：
 ```python
 class Config:
 
@@ -174,12 +175,17 @@ $ python jobs.py start 001 002 003
 * `MySQLOperation` ：MySQL数据库操作工具包。
 
 ### models.py
+字段
 * `Field` ：字段。与数据表字段对应。
 * `TextField` ：文本字段，继承自 `Field` 类。
 * `NumberField` ：数值字段，继承自 `Field` 类。
 * `BooleanField` ：布尔字段，继承自 `Field` 类。
 * `DatetimeField` ：日期时间字段，继承自 `Field` 类。
+
+模型
 * `Model` ：模型。与数据表对应。
+
+自定义模型
 * `Proxy` ：代理表模型，继承自 `Model` 类。
 * `TestLog` ：测试日志模型，继承自 `Model` 类。
 

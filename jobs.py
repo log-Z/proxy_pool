@@ -2,6 +2,7 @@ import sys, logging
 from datetime import datetime as Datetime
 from config import Config
 from iproxy import ProxyPool
+from util import trim_margin
 
 class Jobs:
     def start(self, names):
@@ -94,8 +95,10 @@ if __name__ == '__main__':
     init_logging()
 
     if len(sys.argv) < 3:
-        print('Example:')
-        print('$ python jobs.py start name')
-        print('$ python jobs.py start name1 name2 name3 ...')
+        print(trim_margin('''
+        |Example:
+        |  $ python jobs.py start name
+        |  $ python jobs.py start name1 name2 name3 ...
+        '''))
     elif sys.argv[1] == 'start':
         Jobs().start(sys.argv[2:])
