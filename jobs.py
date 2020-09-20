@@ -3,6 +3,7 @@ from datetime import datetime as Datetime
 from config import Config
 from iproxy import ProxyPool
 from util import trim_margin
+from filter import SimpleProxyFilter, SimpleProxyTestFilter
 
 class Jobs:
     def start(self, names):
@@ -26,8 +27,10 @@ class Jobs:
         启动方式：$ python jobs.py start 001
         """
 
-        from iproxy import ProxyPoolContext, ProxyLoaderContext, ProxyValidatorContext, FatezeroProxySpider, IPValidator
+        from iproxy import ProxyPoolContext, ProxyLoaderContext, ProxyValidatorContext, \
+            FatezeroProxySpider, IPValidator
         from handler import HandlerContext, ProxyValidateHandler, MySQLStreamInserter
+        from datetime import timedelta as Timedelta
 
         ## 0. 配置上下文，为各个组件提供全局环境
         ctx = {
@@ -41,21 +44,71 @@ class Jobs:
 
         ## 2. 加载代理
         # 创建代理加载器
-        loader = FatezeroProxySpider(num=50, context=ProxyLoaderContext(**ctx))
+        loader = FatezeroProxySpider(
+            timeout=60,                             # 设置超时（可选）
+            num=50,                                 # 需要加载的代理数量
+            context=ProxyLoaderContext(**ctx),
+        )
         # 执行加载
         pool.load(loader)
 
-        ## 3. 验证代理
-        # 创建验证器
-        v = IPValidator(**IPValidator.PLAN_IP138, context=ProxyValidatorContext(**ctx))
+        ## 3. 准备验证器
+        v = IPValidator(
+            **IPValidator.PLAN_IP138,               # 指定验证方式，这里使用预定义方案
+            timeout=5,                              # 设置超时（可选）
+            context=ProxyValidatorContext(**ctx),
+        )
+
+        ## 4. 准备过滤器
+        # 创建代理过滤器（以下参数都是可选的）
+        pf = SimpleProxyFilter(
+            # port_list=[80, 8080],                 # 端口号
+            # protocol_list=['http', 'https'],      # 协议
+            # local_list=['home'],                  # 验证地区
+            # collected_timedelta=Timedelta(days=1),# 收录时间与当前时间的距离（最大值）
+        )
+        # 创建代理测试过滤器（以下参数都是可选的）
+        ptf = SimpleProxyTestFilter(
+            proxy_filter=pf,                        # 代理过滤器
+            response_elapsed_mean=6,                # 平均响应时长（最大值，秒）
+            transfer_elapsed_mean=10,               # 平级传输时长（最大值，秒）
+            timeout_exception_pr=0.34,              # 超时异常概率（最大值）
+            proxy_exception_pr=0.34,                # 代理异常概率（最大值）
+            valid_responses_pr=1,                   # 有效响应概率（最小值）
+            pre_tested_timedelta=Timedelta(days=1), # 每个测试的前置条件-测试时间与当前时间的距离（最大值）
+            pre_verification_ip=True,               # 每个测试的前置条件-是否经过IP验证
+            # pre_valid_responses=True,             # 每个测试的前置条件-测是否有效响应
+        )
+
+        ## 5. 准备处理器
         # 创建代理处理器
-        ph = MySQLStreamInserter(max_cache=50, concurrency=10, context=HandlerContext(**ctx))
+        ph = MySQLStreamInserter(
+            buffer_size=50,                         # 缓冲区大小
+            concurrency=10,                         # 最大并发数量
+            context=HandlerContext(**ctx),
+        )
         # 创建测试日志处理器
-        tlh = MySQLStreamInserter(max_cache=50, concurrency=10, context=HandlerContext(**ctx))
-        # 创建验证处理器，负责验证通过后的处理
-        h = ProxyValidateHandler(proxy_handler=ph, test_log_handler=tlh, context=HandlerContext(**ctx))
-        # 执行验证
-        pool.verify(v, h, repeat=3)
+        tlh = MySQLStreamInserter(
+            buffer_size=50,                         # 缓冲区大小
+            concurrency=10,                         # 最大并发数量
+            context=HandlerContext(**ctx),
+        )
+        # 创建验证结果处理器，负责达标代理的处理（如入库）
+        h = ProxyValidateHandler(
+            proxy_handler=ph,                       # 针对Proxy的子处理器（可选）
+            test_log_handler=tlh,                   # 针对TestLog的子处理器（可选）
+            proxy_test_filter=ptf,                  # 指定过滤器，筛选达标的代理（可选）
+            context=HandlerContext(**ctx),
+        )
+        
+        ## 6. 执行验证
+        pool.verify(
+            validator=v,                            # 验证器
+            handler=h,                              # 处理器
+            repeat=3,                               # 每个代理的重复验证次数
+            concurrency=10,                         # 最大并发数量
+            sleep=1,                                # 线程间歇（秒）
+        )
 
 
 class JobContext:

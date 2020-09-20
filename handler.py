@@ -38,15 +38,15 @@ class OnceHandler(BufferHandler):
 
 
 class StreamHandler(BufferHandler):
-    def __init__(self, max_cache:int, concurrency:int, context=None):
+    def __init__(self, buffer_size:int, concurrency:int, context=None):
         super().__init__(context)
-        self._max_cache = max_cache
+        self._buffer_size = buffer_size
         self._lock = RLock()
         self._executor = ThreadPoolExecutor(concurrency)
 
     def handle(self, data):
         self._lock.acquire()
-        if len(self._buffer) >= self._max_cache:
+        if len(self._buffer) >= self._buffer_size:
             self.flush()
         super().handle(data)
         self._lock.release()
@@ -122,10 +122,11 @@ class MySQLStreamInserter(StreamInsertDatabase, MySQLOperationMixin):
 
 
 class ProxyValidateHandler(Handler):
-    def __init__(self, proxy_handler=None, test_log_handler=None, context=None):
+    def __init__(self, proxy_handler=None, test_log_handler=None, proxy_test_filter=None, context=None):
         super().__init__(context)
         self.__proxy_handler = proxy_handler
         self.__test_log_handler = test_log_handler
+        self.__proxy_test_filter = proxy_test_filter
 
     def handle(self, result:dict):
         proxy = result['proxy']
@@ -134,7 +135,7 @@ class ProxyValidateHandler(Handler):
             self._context.logger.info(f'ProxyValidateHandler: Handling test result from proxy "{proxy.proxy_url}".')
 
         try:
-            if self._qualify(test_logs):
+            if self.__proxy_test_filter is None or self.__proxy_test_filter.assess(proxy, test_logs):
                 if self.__proxy_handler is not None:
                     self.__proxy_handler.handle(proxy)
                 if self.__test_log_handler is not None:
@@ -148,10 +149,3 @@ class ProxyValidateHandler(Handler):
     def close(self):
         self.__proxy_handler.close()
         self.__test_log_handler.close()
-
-    def _qualify(self, test_logs:list) -> bool:
-        failures = len(test_logs)
-        for tl in test_logs:
-            if not tl.timeout_exception and not tl.proxy_exception and tl.response_elapsed < 10 and tl.transfer_size > 0:
-                failures -= 1
-        return failures == 0
