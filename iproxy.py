@@ -4,6 +4,8 @@ from datetime import datetime as Datetime
 from concurrent.futures import ThreadPoolExecutor
 from models import Proxy, TestLog
 from config import Config
+from database import MySQLOperation
+from db_mapper import MySQLMapper
 
 
 class ProxyPoolContext:
@@ -18,10 +20,13 @@ class ProxyPool:
         self._proxylist:dict = []
         self._context = context
     
-    def load(self, loader, override=True):
+    def load(self, loader, override=True, proxy_filter=None):
         if override:
             self._proxylist.clear()
+
         ls = loader.load()
+        if proxy_filter:
+            ls = [p for p in ls if proxy_filter.assess(p)]
         self._proxylist.extend(ls)
 
     def verify(self, validator, handler, repeat=1, concurrency=10, sleep=1):
@@ -149,6 +154,46 @@ class SixSixIPProxySpider(ProxySpider):
         except:
             if self._context and self._context.logger:
                 self._context.logger.exception('SixSixIPProxySpider: Failed be load proxy list.')
+            raise
+
+
+class DatabaseProxyLoader(ProxyLoader):
+    pass
+
+
+class MySQLProxyLoader(DatabaseProxyLoader):
+    def load(self):
+        if self._context and self._context.logger:
+            self._context.logger.info('MySQLProxyLoader: loading proxy list.')
+
+        try:
+            return MySQLOperation.select_all(Proxy)
+        except:
+            if self._context and self._context.logger:
+                self._context.logger.exception('MySQLProxyLoader: Failed be load proxy list.')
+            raise
+
+
+class SimpleMySQLProxyLoder(MySQLProxyLoader):
+    def __init__(self, proxy_test_filter, context=None):
+        super().__init__(context=context)
+        self._proxy_test_filter = proxy_test_filter
+        self._entity = Proxy()
+
+    def load(self):
+        if self._context and self._context.logger:
+            self._context.logger.info('SimpleMySQLProxyLoder: loading proxy list.')
+
+        try:
+            field_names = self._entity._metadata.keys()
+            ptf_cond = self._proxy_test_filter._conditions
+            pf_cond = self._proxy_test_filter._proxy_filter._conditions \
+                if self._proxy_test_filter._proxy_filter \
+                else {}
+            return MySQLMapper.find_proxies(pf_cond, ptf_cond, field_names)
+        except:
+            if self._context and self._context.logger:
+                self._context.logger.exception('SimpleMySQLProxyLoder: Failed be load proxy list.')
             raise
 
 

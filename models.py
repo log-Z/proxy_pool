@@ -9,6 +9,7 @@ class Field:
     def to_sql(self, value):
         raise NotImplementedError()
 
+
 class TextField(Field):
     def to_sql(self, value:str):
         if isinstance(value, str):
@@ -16,6 +17,9 @@ class TextField(Field):
         elif value is None:
             return 'null'
         raise RuntimeError(f'TextField value cannot be of type "{type(value)}", value is "{value}".')
+
+    # TODO: 新增方法：有效值检查
+
 
 class NumberField(Field):
     __SUPPORT_TYPE = (int, float, Decimal)
@@ -47,6 +51,7 @@ class BooleanField(Field):
             return 'null'
         raise RuntimeError(f'BooleanField value cannot be of type "{type(value)}", value is "{value}".')
 
+
 class DatetimeField(Field):
     def to_sql(self, value):
         if isinstance(value, Datetime):
@@ -54,6 +59,7 @@ class DatetimeField(Field):
         elif value is None:
             return 'null'
         raise RuntimeError(f'DatetimeField value cannot be of type "{type(value)}", value is "{value}".')
+
 
 class Model:
     def __init__(self):

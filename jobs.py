@@ -2,7 +2,7 @@ import sys, logging
 from datetime import datetime as Datetime
 from config import Config
 from iproxy import ProxyPool
-from util import trim_margin
+from util import trim_margin, mkdir_if_notexists
 from filter import SimpleProxyFilter, SimpleProxyTestFilter
 
 class Jobs:
@@ -46,7 +46,7 @@ class Jobs:
         # 创建代理加载器
         loader = FatezeroProxySpider(
             timeout=60,                             # 设置超时（可选）
-            num=50,                                 # 需要加载的代理数量
+            num=5000,                                 # 需要加载的代理数量
             context=ProxyLoaderContext(**ctx),
         )
         # 执行加载
@@ -126,7 +126,8 @@ def init_logging():
     }
 
     path = Config.log.get('path')
-    if path is not None:
+    if path:
+        mkdir_if_notexists(path)
         config['filename'] = path
 
     level = Config.log.get('level')

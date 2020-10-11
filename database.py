@@ -5,42 +5,36 @@ import pymysql
 class MySQLOperation:
     @staticmethod
     def insert(entity:Model) -> bool:
-        table = MySQLOperation.__table_name(entity)
-        fields = MySQLOperation.__fields_substament(entity)
+        table = MySQLOperation.table_name(entity)
+        fields = MySQLOperation.fields_substament(entity)
         values = MySQLOperation.__values_substament(entity)
 
-        row_num = MySQLOperation.__execute(f'insert into {table}({fields}) \nvalues ({values});')
+        row_num = MySQLOperation.execute(f'insert into {table}({fields}) \nvalues ({values});')
         return row_num > 0
 
     @staticmethod
     def batch_insert(entity_list:list) -> int:
-        if entity_list is None or len(entity_list) == 0:
+        if not entity_list:
             return
-        table = MySQLOperation.__table_name(entity_list[0])
-        fields = MySQLOperation.__fields_substament(entity_list[0])
+        table = MySQLOperation.table_name(entity_list[0])
+        fields = MySQLOperation.fields_substament(entity_list[0])
         values_list = [MySQLOperation.__values_substament(entity) for entity in entity_list]
         mult_values = '\n, '.join(map(lambda values: '({})'.format(values), values_list))
         
-        return MySQLOperation.__execute(f'insert into {table}({fields}) \nvalues {mult_values};')
+        return MySQLOperation.execute(f'insert into {table}({fields}) \nvalues {mult_values};')
 
     @staticmethod
-    def select(entity:Model) -> list:
-        table = MySQLOperation.__table_name(entity)
-        field_names = entity._metadata.keys()
-        fields = MySQLOperation.__fields_substament(entity)
+    def select_all(_type:type) -> list:
+        if not isinstance(_type, type) or not issubclass(_type, Model):
+            raise TypeError('Parameter "_type" must be a Model subtype')
 
-        result = []
-        data = MySQLOperation.__query(f'select {fields} from {table};')
-        for row in data:
-            obj = entity.__class__()
-            for field, value in zip(field_names, row):
-                if field in field_names:
-                    setattr(obj, field, value)
-            result.append(obj)
-        return result
+        entity = _type()
+        table = MySQLOperation.table_name(entity)
+        fields = MySQLOperation.fields_substament(entity)
+        return MySQLOperation.query(f'select {fields} from {table};', _type)
 
     @staticmethod
-    def __execute(sql:str) -> int:
+    def execute(sql:str) -> int:
         row_num = 0
         connect = pymysql.connect(**Config.database)
         with connect.cursor() as cursor:
@@ -50,28 +44,37 @@ class MySQLOperation:
         return row_num
 
     @staticmethod
-    def __query(sql:str) -> list:
+    def query(sql:str, _type:type) -> list:
+        if not isinstance(_type, type) or not issubclass(_type, Model):
+            raise TypeError('Parameter "_type" must be a Model subtype')
+
         result = []
+        fields = _type()._metadata.keys()
         connect = pymysql.connect(**Config.database)
         with connect.cursor() as cursor:
             cursor.execute(sql)
             data = cursor.fetchall()
-            if data:
-                result = data
+            cols = {d[0]: i for i, d in enumerate(cursor.description) if d[0] in fields}
+            
+            if not data: data = tuple()
+            for row in data:
+                entity = _type()
+                for col, i in cols.items():
+                    setattr(entity, col, row[i])
+                result.append(entity)
 
         connect.close()
         return result
 
     @staticmethod
-    def __table_name(entity:Model) -> str:
+    def table_name(entity:Model) -> str:
         ls = list(entity.__class__.__name__)
         ls[0] = ls[0].lower()
         iter = map(lambda letter: letter if letter.islower() else f'_{letter.lower()}', ls)
         return ''.join(iter)
-        
-    
+
     @staticmethod
-    def __fields_substament(entity:Model) -> str:
+    def fields_substament(entity:Model) -> str:
         return ', '.join(entity._metadata.keys())
 
     @staticmethod
