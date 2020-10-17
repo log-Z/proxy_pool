@@ -10,6 +10,16 @@ class Config:
         'password': 'root',
         'db': 'proxy_pool',
         'charset': 'utf8mb4',
+
+        'mincached': 3,
+        'maxcached': 20,
+        'maxshared': None,
+        'maxconnections': None,
+        'blocking': True,
+        'maxusage': None,
+        'reset': None,
+        'setsession': [],
+        'ping': 1,
     }
 
     # 必须。指定日志信息。

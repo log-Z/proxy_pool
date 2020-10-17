@@ -1,8 +1,22 @@
 from models import Model
 from config import Config
+
 import pymysql
+from dbutils.pooled_db import PooledDB
 
 class MySQLOperation:
+    _POOL: PooledDB = None
+
+    @staticmethod
+    def init_pool():
+        if not MySQLOperation._POOL:
+            MySQLOperation._POOL = PooledDB(creator=pymysql, **Config.database)
+
+    @staticmethod
+    def close_pool():
+        if MySQLOperation._POOL:
+            MySQLOperation._POOL.close()
+
     @staticmethod
     def insert(entity:Model) -> bool:
         table = MySQLOperation.table_name(entity)
@@ -36,7 +50,7 @@ class MySQLOperation:
     @staticmethod
     def execute(sql:str) -> int:
         row_num = 0
-        connect = pymysql.connect(**Config.database)
+        connect = MySQLOperation._POOL.connection()
         with connect.cursor() as cursor:
             row_num = cursor.execute(sql)
             connect.commit()
@@ -50,7 +64,7 @@ class MySQLOperation:
 
         result = []
         fields = _type()._metadata.keys()
-        connect = pymysql.connect(**Config.database)
+        connect = MySQLOperation._POOL.connection()
         with connect.cursor() as cursor:
             cursor.execute(sql)
             data = cursor.fetchall()

@@ -31,6 +31,7 @@ class Jobs:
             FatezeroProxySpider, IPValidator
         from handler import HandlerContext, ProxyValidateHandler, MySQLStreamInserter
         from datetime import timedelta as Timedelta
+        from database import MySQLOperation
 
         ## 0. 配置上下文，为各个组件提供全局环境
         ctx = {
@@ -102,6 +103,7 @@ class Jobs:
         )
         
         ## 6. 执行验证
+        MySQLOperation.init_pool()
         pool.verify(
             validator=v,                            # 验证器
             handler=h,                              # 处理器
@@ -109,6 +111,7 @@ class Jobs:
             concurrency=10,                         # 最大并发数量
             sleep=1,                                # 线程间歇（秒）
         )
+        MySQLOperation.close_pool()
 
 
 class JobContext:
