@@ -67,8 +67,8 @@ class ProxyPool:
         pandas.DataFrame(self.to_naive()).to_csv(fp, encoding='utf-8')
 
     def to_redis(self, conn_config, key, ex):
-        r = redis.StrictRedis(**conn_config)
-        r.setex(key, ex, self.to_jsons())
+        with redis.StrictRedis(**conn_config) as r:
+            r.setex(key, ex, self.to_jsons())
 
     def __len__(self):
         return len(self._proxylist)
