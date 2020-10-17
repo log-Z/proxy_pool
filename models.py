@@ -69,8 +69,11 @@ class Model:
                 self._metadata[attr] = getattr(self.__class__, attr)
                 setattr(self, attr, None)
     
+    def __iter__(self):
+        return iter([(field, getattr(self, field)) for field in self._metadata.keys()])
+
     def __str__(self):
-        fields = [f'{field}={getattr(self, field)}' for field in self._metadata.keys()]
+        fields = [f'{field}={value}' for field, value in self]
         fields_str = ', '.join(fields)
         return f'{self.__class__.__name__}{{{fields_str}}}'
 

@@ -1,5 +1,8 @@
 import time, re, json, traceback, math
 import requests
+import pandas
+import redis
+
 from datetime import datetime as Datetime
 from concurrent.futures import ThreadPoolExecutor
 from models import Proxy, TestLog
@@ -50,15 +53,32 @@ class ProxyPool:
 
         handler.close()
 
-    # def to_json(self, fp:str):
-    #     with open(fp, mode="w") as json_file:
-    #         json.dump(self._proxylist, json_file)
+    def to_naive(self):
+        return [dict(p) for p in self._proxylist]
+
+    def to_json(self, fp:str):
+        with open(fp, mode="w") as json_file:
+            json.dump(self.to_naive(), json_file, cls=self.ModelJsonEncoder)
+ 
+    def to_jsons(self):
+        return json.dumps(self.to_naive(), cls=self.ModelJsonEncoder)
     
-    # def to_csv(self, fp:str):
-    #     pandas.DataFrame(self._proxylist).to_csv(fp, encoding='utf-8')
+    def to_csv(self, fp:str):
+        pandas.DataFrame(self.to_naive()).to_csv(fp, encoding='utf-8')
+
+    def to_redis(self, conn_config, key, ex):
+        r = redis.StrictRedis(**conn_config)
+        r.setex(key, ex, self.to_jsons())
 
     def __len__(self):
         return len(self._proxylist)
+
+    class ModelJsonEncoder(json.JSONEncoder):
+        def default(self, o):
+            if isinstance(o, Datetime):
+                return o.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                return json.JSONEncoder.default(o)
 
 
 class ProxyLoaderContext:
