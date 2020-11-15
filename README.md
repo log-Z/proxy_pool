@@ -8,6 +8,7 @@
 1. 抓取网络上发布的免费IP代理。
 1. 验证代理有效性。
 1. 持久化代理到 MySQL 数据库中。
+1. 代理质量过滤，及推送。
 
 
 ## 起步
@@ -40,6 +41,16 @@ class Config:
         'password': 'root',
         'db': 'proxy_pool',
         'charset': 'utf8mb4',
+
+        'mincached': 3,
+        'maxcached': 20,
+        'maxshared': None,
+        'maxconnections': None,
+        'blocking': True,
+        'maxusage': None,
+        'reset': None,
+        'setsession': [],
+        'ping': 1,
     }
 
     # 必须。指定日志信息。
@@ -173,15 +184,22 @@ $ python jobs.py start 001 002 003
 |4|https://78.141.134.204:8080|xxx|http://...|0.0000|0.0000|0|0|0|2020-07-19 17:31:56|2020-07-19 17:35:07|1|||...|
 
 
+## 代理推送
+文档待补充...
+
+
 ## 文档
 ### 模块概览
 * `iproxy.py` ：包含代理池、代理加载器、代理验证器等。
 * `handler.py` ：包含代理处理器、测试日志处理器、验证处理器等。
+* `filter.py` ：代理过滤器。
 * `database.py` ：数据库相关操作工具包。
+* `db_mapper.py` ：数据库映射。
 * `models.py` ：持久层的实体模型。
-* `config.py` : 全局配置。
+* `config.py` ：全局配置。
 * `jobs.py` ：作业管理，支持快速启动作业。
-> 原来的 `proxy_pool.py` 已经废弃，将会择机删除！
+* `util.py` ：工具集。
+> 原来的 `proxy_pool.py` 已经废弃删除！（2020-11-15）
 
 ### iproxy.py
 代理池
@@ -191,6 +209,9 @@ $ python jobs.py start 001 002 003
 * `ProxyLoader` ：代理加载器。
 * `ProxySpider` ：代理爬虫，继承自 `ProxyLoader` 类。
 * `XxxProxySpider` ：针对某个网站的代理爬虫，继承自 `ProxyLoader` 类。
+* `DatabaseProxyLoader` ： 从数据库中加载代理。
+* `MySQLProxyLoader` ：从MySQL中加载全部代理，继承自 `DatabaseProxyLoader` 类。
+* `SimpleMySQLProxyLoder` ：从MySQL中加载部分代理，继承自 `MySQLProxyLoader` 类。
 
 代理验证器
 * `ProxyValidator` ：代理验证器。
@@ -232,6 +253,9 @@ $ python jobs.py start 001 002 003
 ### database.py
 * `MySQLOperation` ：MySQL数据库操作工具包。
 
+### db_mapper.py
+* `MySQLMapper` ：MySQL数据映射。
+
 ### models.py
 字段
 * `Field` ：字段。与数据表字段对应。
@@ -253,3 +277,7 @@ $ python jobs.py start 001 002 003
 ### jobs.py
 * `Job` ：作业管理。
 * `JobContext` ：作业上下文。
+
+### util.py
+* `trim_margin()` ：轻松对齐多行字符串。
+* `mkdir_if_notexists()` ：递归创建路径的父目录。
